@@ -1,0 +1,54 @@
+name: Deploy MLflow Auth System
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Create deployment package
+      run: |
+        tar -czf mlflow-auth-system.tar.gz \
+          mlflow-auth-plugin/ \
+          deployment/ \
+          docs/ \
+          README.md \
+          requirements.txt
+    
+    - name: Deploy to server (optionnel)
+      if: ${{ secrets.DEPLOY_HOST }}
+      env:
+        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      run: |
+        # Configuration SSH
+        mkdir -p ~/.ssh
+        echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        
+        # Upload du package
+        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+          mlflow-auth-system.tar.gz $DEPLOY_USER@$DEPLOY_HOST:/tmp/
+        
+        # Déploiement sur le serveur
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+          $DEPLOY_USER@$DEPLOY_HOST << 'ENDSSH'
+          cd /opt/mlflow
+          tar -xzf /tmp/mlflow-auth-system.tar.gz --strip-components=1
+          python deployment/setup_environment.py
+          sudo systemctl restart mlflow
+ENDSSH

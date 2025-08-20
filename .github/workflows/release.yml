@@ -1,0 +1,78 @@
+name: Release MLflow Auth Plugin
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip build twine
+    
+    - name: Build plugin package
+      run: |
+        cd mlflow-auth-plugin
+        python -m build
+    
+    - name: Test package
+      run: |
+        cd mlflow-auth-plugin
+        python -m twine check dist/*
+    
+    - name: Publish to PyPI (si configuré)
+      if: ${{ secrets.PYPI_API_TOKEN }}
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        cd mlflow-auth-plugin
+        python -m twine upload dist/*
+    
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Release ${{ github.ref_name }}
+        body: |
+          ## 🚀 MLflow Auth Plugin ${{ github.ref_name }}
+          
+          ### Nouvelles fonctionnalités
+          - Authentification utilisateur/mot de passe
+          - Gestion des rôles (admin, user, viewer)
+          - Interface d'administration web
+          - API Keys pour accès programmatique
+          
+          ### Installation
+          ```bash
+          pip install mlflow-auth-plugin==${{ github.ref_name }}
+          ```
+          
+          ### Documentation
+          Voir le [README](https://github.com/EikouJ/MLflow-authentification-plugin/blob/main/README.md)
+        draft: false
+        prerelease: false
+    
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: mlflow-auth-plugin/dist/mlflow_auth_plugin-*.tar.gz
+        asset_name: mlflow-auth-plugin-${{ github.ref_name }}.tar.gz
+        asset_content_type: application/gzip
