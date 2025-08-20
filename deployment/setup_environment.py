@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Configuration automatique de l'environnement MLflow avec authentification
+Configuration automatique de l'environnement MLflow avec authentification - VERSION CORRIGÉE
 """
 
 import os
@@ -37,21 +37,17 @@ def get_venv_paths(venv_path):
     return str(python_path), str(pip_path)
 
 def install_requirements(pip_path):
-    """Installe les dépendances"""
+    """Installe les dépendances depuis requirements.txt"""
     
-    print("📦 Installation de MLflow et des dépendances...")
+    req_file = Path(__file__).parent / "requirements.txt"
     
-    requirements = [
-        "mlflow>=2.0.0",
-        "flask-login>=0.6.0", 
-        "flask-bcrypt>=1.0.0",
-        "sqlalchemy>=1.4.0",
-        "wtforms>=3.0.0",
-        "flask-wtf>=1.0.0",
-        "alembic>=1.8.0",
-    ]
+    if not req_file.exists():
+        print("❌ Fichier requirements.txt non trouvé")
+        return False
     
-    cmd = [pip_path, "install", "--upgrade"] + requirements
+    print("📦 Installation des dépendances...")
+    
+    cmd = [pip_path, "install", "-r", str(req_file)]
     result = subprocess.run(cmd, capture_output=True, text=True)
     
     if result.returncode != 0:
@@ -62,7 +58,7 @@ def install_requirements(pip_path):
     return True
 
 def install_auth_plugin(pip_path):
-    """Installe le plugin d'authentification"""
+    """Installe le plugin d'authentification en mode développement"""
     
     plugin_path = Path(__file__).parent.parent / "mlflow-auth-plugin"
     
@@ -86,7 +82,7 @@ def create_directories():
     """Crée les répertoires nécessaires"""
     
     base_dir = Path(__file__).parent
-    directories = ["data", "artifacts", "logs", "config"]
+    directories = ["data", "artifacts", "logs"]
     
     for dir_name in directories:
         dir_path = base_dir / dir_name
@@ -119,90 +115,12 @@ MLFLOW_DEFAULT_ARTIFACT_ROOT={base_dir}/artifacts
 # Configuration serveur
 MLFLOW_HOST=0.0.0.0
 MLFLOW_PORT=5000
-
-# Sécurité (à configurer en production)
-# MLFLOW_AUTH_LDAP_ENABLED=false
-# MLFLOW_AUTH_SESSION_TIMEOUT=3600
 """
     
     with open(env_file, "w") as f:
         f.write(env_content)
     
     print(f"📄 Fichier de configuration créé : {env_file}")
-
-def create_initial_admin(python_path):
-    """Crée l'utilisateur admin initial"""
-    
-    script_content = '''
-import os
-import sys
-from pathlib import Path
-
-# Configuration de l'environnement
-os.environ["MLFLOW_AUTH_ENABLED"] = "true"
-base_dir = Path(__file__).parent
-os.environ["MLFLOW_BACKEND_STORE_URI"] = f"sqlite:///{base_dir}/data/mlflow.db"
-
-try:
-    from mlflow_auth.auth.models import Base, User
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    
-    # Créer la base de données
-    db_path = base_dir / "data" / "mlflow_auth.db"
-    engine = create_engine(f"sqlite:///{db_path}")
-    Base.metadata.create_all(engine)
-    
-    # Créer la session
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    
-    # Vérifier si un admin existe déjà
-    existing_admin = session.query(User).filter_by(role="admin").first()
-    
-    if not existing_admin:
-        # Créer l'admin initial
-        admin = User(
-            username="admin",
-            email="admin@mlflow.local",
-            role="admin",
-            is_active=True
-        )
-        admin.set_password("admin123")
-        
-        session.add(admin)
-        session.commit()
-        
-        print("👤 Utilisateur admin créé :")
-        print("   Username: admin")
-        print("   Password: admin123")
-        print("   ⚠️  CHANGEZ LE MOT DE PASSE lors de la première connexion !")
-    else:
-        print("👤 Utilisateur admin existant trouvé")
-    
-    session.close()
-    
-except Exception as e:
-    print(f"❌ Erreur création admin : {e}")
-    sys.exit(1)
-'''
-    
-    # Écrire et exécuter le script
-    script_path = Path(__file__).parent / "create_admin_temp.py"
-    with open(script_path, "w") as f:
-        f.write(script_content)
-    
-    try:
-        result = subprocess.run([python_path, str(script_path)], 
-                              capture_output=True, text=True, cwd=Path(__file__).parent)
-        
-        if result.returncode == 0:
-            print(result.stdout)
-        else:
-            print(f"❌ Erreur création admin : {result.stderr}")
-    finally:
-        # Nettoyer le script temporaire
-        script_path.unlink(missing_ok=True)
 
 def main():
     """Fonction principale de configuration"""
@@ -229,9 +147,6 @@ def main():
         # 5. Créer le fichier de configuration
         create_env_file()
         
-        # 6. Créer l'admin initial
-        create_initial_admin(python_path)
-        
         print("\n" + "=" * 60)
         print("✅ Configuration terminée avec succès !")
         print("\n🚀 Pour démarrer MLflow :")
@@ -243,9 +158,9 @@ def main():
         
         print("   python start_mlflow.py")
         print("\n🌐 Accès :")
-        print("   - Interface MLflow : http://localhost:5000")
-        print("   - Administration : http://localhost:5000/admin/users")
+        print("   - Interface MLflow avec auth : http://localhost:5000")
         print("   - Login initial : admin / admin123")
+        print("   - MLflow sans auth : python start_mlflow.py --no-auth")
         
         return True
         
