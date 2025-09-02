@@ -30,7 +30,7 @@
     <table class="table table-striped align-middle" id="usersTable">
       <thead class="table-light">
         <tr>
-          <th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th style="width:220px"></th>
+          <th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th style="width:260px"></th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -110,7 +110,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-let currentUserId = null; // set when editing
+let currentUserId = null;
+let currentUserRole = null;
 
 function showAlert(msg, type='success') {
   const el = document.createElement('div');
@@ -124,14 +125,31 @@ function formatDate(iso) { if(!iso) return 'Never'; return new Date(iso).toLocal
 function getRoleBadgeClass(role){ return role === 'admin' ? 'bg-primary' : 'bg-secondary'; }
 function getRoleLabel(role){ return role || 'user'; }
 
+async function loadMe() {
+  try {
+    const res = await fetch('/admin/api/me');
+    const me = await res.json();
+    currentUserId = me.id;
+    currentUserRole = me.role;
+  } catch (e) {
+    console.error('Load me error:', e);
+  }
+}
+
 async function loadUsers() {
   try {
     const res = await fetch('/admin/api/users?page=1&size=500');
     const data = await res.json();
     const list = Array.isArray(data) ? data : (data.items || []);
+
+    const adminCount = list.filter(u => (u.role === 'admin' && u.is_active)).length;
+
     const tbody = document.querySelector('#usersTable tbody');
     tbody.innerHTML = list.map(user => {
-      const isCurrentUser = false; // customize if you inject current user's id
+      const isCurrentUser = (user.id === currentUserId);
+      const isLastActiveAdmin = (user.role === 'admin' && user.is_active && adminCount <= 1);
+      const cannotDelete = isCurrentUser || isLastActiveAdmin;
+
       return `
         <tr>
           <td>${user.username}</td>
@@ -145,7 +163,10 @@ async function loadUsers() {
           <td>
             <button class="btn btn-sm btn-primary me-1" onclick="editUser(${user.id})">Edit</button>
             <button class="btn btn-sm btn-warning me-1" onclick="showResetPasswordModal(${user.id}, '${user.username}')">Reset PW</button>
-            ${!isCurrentUser ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')">Delete</button>` : ''}
+            ${cannotDelete
+              ? '<button class="btn btn-sm btn-danger" disabled title="Deletion blocked">Delete</button>'
+              : `<button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')">Delete</button>`
+            }
           </td>
         </tr>`;
     }).join('');
@@ -174,7 +195,7 @@ async function editUser(userId) {
     const res = await fetch('/admin/api/users/' + userId);
     const user = await res.json();
 
-    currentUserId = userId;
+    currentUserId = currentUserId ?? null; // no change
     document.getElementById('modalTitle').textContent = 'Edit user';
     document.getElementById('username').value = user.username;
     document.getElementById('email').value = user.email || '';
@@ -206,13 +227,16 @@ document.getElementById('userForm').addEventListener('submit', async function(e)
 
   try {
     let res;
-    if (currentUserId) {
-      res = await fetch('/admin/api/users/' + currentUserId, {
+    if (document.getElementById('username').disabled) {
+      // edit
+      const id = await getEditingUserId();
+      res = await fetch('/admin/api/users/' + id, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
     } else {
+      // create
       if (!password) { showAlert('Password is required to create a user', 'warning'); return; }
       res = await fetch('/admin/api/users', {
         method: 'POST',
@@ -221,9 +245,9 @@ document.getElementById('userForm').addEventListener('submit', async function(e)
       });
     }
     if (res.ok) {
-      showAlert(currentUserId ? 'User updated' : 'User created', 'success');
+      showAlert(document.getElementById('username').disabled ? 'User updated' : 'User created', 'success');
       bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
-      loadUsers();
+      await loadUsers();
     } else {
       const err = await res.json();
       showAlert('Error: ' + (err.error || res.status), 'danger');
@@ -234,7 +258,22 @@ document.getElementById('userForm').addEventListener('submit', async function(e)
   }
 });
 
+// Helper pour retrouver l'id depuis le username dans le tableau (simple & robuste)
+async function getEditingUserId() {
+  const username = document.getElementById('username').value;
+  const res = await fetch('/admin/api/users?page=1&size=500');
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : (data.items || []);
+  const u = list.find(x => x.username === username);
+  return u ? u.id : null;
+}
+
 async function deleteUser(userId, username) {
+  // Garde-fou front (la sécurité est surtout côté backend)
+  if (userId === currentUserId) {
+    showAlert("You cannot delete yourself.", "warning");
+    return;
+  }
   if (!confirm(`Delete user "${username}" ?`)) return;
   try {
     const res = await fetch('/admin/api/users/' + userId, { method: 'DELETE' });
@@ -281,7 +320,10 @@ document.getElementById('resetForm').addEventListener('submit', async function(e
   }
 });
 
-document.addEventListener('DOMContentLoaded', loadUsers);
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadMe();
+  await loadUsers();
+});
 </script>
 </body>
 </html>
