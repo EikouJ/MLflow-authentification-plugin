@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des utilisateurs - MLflow{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-people"></i> Gestion des utilisateurs</h2>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#userModal">
+        <i class="bi bi-plus-circle"></i> Nouvel utilisateur
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover" id="usersTable">
+                <thead>
+                    <tr>
+                        <th>Nom d'utilisateur</th>
+                        <th>Email</th>
+                        <th>Rôle</th>
+                        <th>Statut</th>
+                        <th>Dernière connexion</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Users will be loaded via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- User Modal -->
+<div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Créer un utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="userForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nom d'utilisateur</label>
+                        <input type="text" class="form-control" id="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rôle</label>
+                        <select class="form-select" id="role" required>
+                            <option value="viewer">Visualiseur</option>
+                            <option value="user">Utilisateur</option>
+                            <option value="admin">Administrateur</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mot de passe</label>
+                        <input type="password" class="form-control" id="password" required>
+                        <div class="form-text" id="passwordHelp">Laisser vide pour ne pas modifier</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="is_active" checked>
+                        <label class="form-check-label" for="is_active">Compte actif</label>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="password_change_required">
+                        <label class="form-check-label" for="password_change_required">Changement de mot de passe requis</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal fade" id="resetPasswordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Réinitialiser le mot de passe</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="resetPasswordForm">
+                <div class="modal-body">
+                    <input type="hidden" id="reset_user_id">
+                    <div class="mb-3">
+                        <label class="form-label">Nouveau mot de passe</label>
+                        <input type="password" class="form-control" id="reset_password" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="reset_password_change_required" checked>
+                        <label class="form-check-label" for="reset_password_change_required">Changement de mot de passe requis à la prochaine connexion</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Réinitialiser</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentUserId = null;
+    // Store current user ID from Flask template
+    const currentUserID = parseInt("{{ current_user.id }}");
+    
+    // Load users on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadUsers();
+    });
+    
+    // Load users from API
+    async function loadUsers() {
+        try {
+            const response = await fetch('/admin/api/users');
+            const users = await response.json();
+            
+            const tbody = document.querySelector('#usersTable tbody');
+            tbody.innerHTML = users.map(user => {
+                // Fix the object comparison issue
+                const isCurrentUser = user.id === currentUserID;
+                
+                return `
+                <tr>
+                    <td>${user.username}</td>
+                    <td>${user.email}</td>
+                    <td>
+                        <span class="badge ${getRoleBadgeClass(user.role)}">
+                            ${getRoleLabel(user.role)}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge ${user.is_active ? 'bg-success' : 'bg-danger'}">
+                            ${user.is_active ? 'Actif' : 'Inactif'}
+                        </span>
+                        ${user.password_change_required ? '<span class="badge bg-warning ms-1">Changement requis</span>' : ''}
+                    </td>
+                    <td>${user.last_login ? formatDate(user.last_login) : 'Jamais'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-1" onclick="editUser(${user.id})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-warning me-1" onclick="showResetPasswordModal(${user.id}, '${user.username}')">
+                            <i class="bi bi-key"></i>
+                        </button>
+                        ${!isCurrentUser ? `
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        ` : ''}
+                    </td>
+                </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Erreur chargement utilisateurs:', error);
+            showAlert('Erreur lors du chargement des utilisateurs', 'danger');
+        }
+    }
+    
+    // Show reset password modal
+    function showResetPasswordModal(userId, username) {
+        document.getElementById('reset_user_id').value = userId;
+        document.getElementById('resetPasswordModal').querySelector('.modal-title').textContent = 'Réinitialiser le mot de passe - ' + username;
+        new bootstrap.Modal(document.getElementById('resetPasswordModal')).show();
+    }
+    
+    // Edit user
+    async function editUser(userId) {
+        try {
+            const response = await fetch('/admin/api/users');
+            const users = await response.json();
+            const user = users.find(u => u.id === userId);
+            
+            if (user) {
+                currentUserId = userId;
+                document.getElementById('modalTitle').textContent = 'Modifier l\'utilisateur';
+                document.getElementById('username').value = user.username;
+                document.getElementById('email').value = user.email;
+                document.getElementById('password').value = '';
+                document.getElementById('role').value = user.role;
+                document.getElementById('is_active').checked = user.is_active;
+                document.getElementById('password_change_required').checked = user.password_change_required;
+                document.getElementById('passwordHelp').style.display = 'block';
+                
+                // Disable username field for editing
+                document.getElementById('username').disabled = true;
+                
+                new bootstrap.Modal(document.getElementById('userModal')).show();
+            }
+        } catch (error) {
+            console.error('Erreur chargement utilisateur:', error);
+            showAlert('Erreur lors du chargement de l\'utilisateur', 'danger');
+        }
+    }
+    
+    // Delete user
+    async function deleteUser(userId, username) {
+        if (confirm('Êtes-vous sûr de vouloir supprimer l\'utilisateur "' + username + '" ?')) {
+            try {
+                const response = await fetch('/admin/api/users/' + userId, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showAlert('Utilisateur supprimé avec succès', 'success');
+                    loadUsers();
+                } else {
+                    const error = await response.json();
+                    showAlert('Erreur: ' + error.error, 'danger');
+                }
+            } catch (error) {
+                console.error('Erreur suppression:', error);
+                showAlert('Erreur lors de la suppression', 'danger');
+            }
+        }
+    }
+    
+    // User form submission
+    document.getElementById('userForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = {
+            username: document.getElementById('username').value,
+            email: document.getElementById('email').value,
+            role: document.getElementById('role').value,
+            is_active: document.getElementById('is_active').checked,
+            password_change_required: document.getElementById('password_change_required').checked
+        };
+        
+        const password = document.getElementById('password').value;
+        if (password) {
+            formData.password = password;
+        }
+        
+        try {
+            let response;
+            if (currentUserId) {
+                // Modification
+                response = await fetch('/admin/api/users/' + currentUserId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+            } else {
+                // Création
+                if (!password) {
+                    showAlert('Le mot de passe est requis pour créer un utilisateur', 'warning');
+                    return;
+                }
+                response = await fetch('/admin/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+            }
+            
+            if (response.ok) {
+                showAlert(currentUserId ? 'Utilisateur modifié avec succès' : 'Utilisateur créé avec succès', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+                loadUsers();
+            } else {
+                const error = await response.json();
+                showAlert('Erreur: ' + error.error, 'danger');
+            }
+        } catch (error) {
+            console.error('Erreur sauvegarde:', error);
+            showAlert('Erreur lors de la sauvegarde', 'danger');
+        }
+    });
+    
+    // Reset password form submission
+    document.getElementById('resetPasswordForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const userId = document.getElementById('reset_user_id').value;
+        const password = document.getElementById('reset_password').value;
+        const changeRequired = document.getElementById('reset_password_change_required').checked;
+        
+        try {
+            const response = await fetch('/admin/api/users/' + userId + '/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    password: password,
+                    password_change_required: changeRequired
+                })
+            });
+            
+            if (response.ok) {
+                showAlert('Mot de passe réinitialisé avec succès', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('resetPasswordModal')).hide();
+                document.getElementById('resetPasswordForm').reset();
+                loadUsers();
+            } else {
+                const error = await response.json();
+                showAlert('Erreur: ' + error.error, 'danger');
+            }
+        } catch (error) {
+            console.error('Erreur réinitialisation:', error);
+            showAlert('Erreur lors de la réinitialisation', 'danger');
+        }
+    });
+    
+    // Reset modal when closed
+    document.getElementById('userModal').addEventListener('hidden.bs.modal', function () {
+        currentUserId = null;
+        document.getElementById('userForm').reset();
+        document.getElementById('username').disabled = false;
+        document.getElementById('passwordHelp').style.display = 'none';
+        document.getElementById('modalTitle').textContent = 'Créer un utilisateur';
+    });
+    
+    // Utility functions
+    function getRoleBadgeClass(role) {
+        const classes = {
+            'admin': 'bg-danger',
+            'user': 'bg-primary', 
+            'viewer': 'bg-secondary'
+        };
+        return classes[role] || 'bg-secondary';
+    }
+    
+    function getRoleLabel(role) {
+        const labels = {
+            'admin': 'Administrateur',
+            'user': 'Utilisateur',
+            'viewer': 'Visualiseur'
+        };
+        return labels[role] || role;
+    }
+    
+    function formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('fr-FR');
+    }
+    
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-' + type + ' alert-dismissible fade show';
+        alertDiv.innerHTML = message +
+            '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        
+        document.querySelector('.container.mt-4').prepend(alertDiv);
+        
+        // Auto remove after 5 seconds
+        setTimeout(function() {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}

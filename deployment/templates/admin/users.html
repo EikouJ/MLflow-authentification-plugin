@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Users - MLflow Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/admin">MLflow Admin</a>
+    <div class="d-flex">
+      <a class="btn btn-outline-light me-2" href="/admin/login_history">History</a>
+      <a class="btn btn-warning" href="/logout">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <div id="alerts"></div>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 m-0">Users</h1>
+    <button class="btn btn-primary" onclick="openCreate()">Create user</button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped align-middle" id="usersTable">
+      <thead class="table-light">
+        <tr>
+          <th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th style="width:220px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Modal -->
+<div class="modal" id="userModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="userForm">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Create user</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Username</label>
+            <input id="username" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Email</label>
+            <input id="email" class="form-control" type="email" placeholder="user@example.org">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Password</label>
+            <input id="password" class="form-control" type="password" placeholder="••••••">
+            <div class="form-text" id="passwordHelp" style="display:none">Leave blank to keep current password.</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Role</label>
+            <select id="role" class="form-select">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="is_active" checked>
+            <label class="form-check-label" for="is_active">Active</label>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="password_change_required">
+            <label class="form-check-label" for="password_change_required">Require password change</label>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reset password modal -->
+<div class="modal" id="resetModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="resetForm">
+      <div class="modal-header">
+        <h5 class="modal-title">Reset password</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="resetUser"></p>
+        <input id="resetPassword" class="form-control" type="password" placeholder="New password" required>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="resetRequire" checked>
+          <label class="form-check-label" for="resetRequire">Require password change</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-warning" type="submit">Reset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentUserId = null; // set when editing
+
+function showAlert(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = `alert alert-${type}`;
+  el.textContent = msg;
+  document.getElementById('alerts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function formatDate(iso) { if(!iso) return 'Never'; return new Date(iso).toLocaleString(); }
+function getRoleBadgeClass(role){ return role === 'admin' ? 'bg-primary' : 'bg-secondary'; }
+function getRoleLabel(role){ return role || 'user'; }
+
+async function loadUsers() {
+  try {
+    const res = await fetch('/admin/api/users?page=1&size=500');
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.items || []);
+    const tbody = document.querySelector('#usersTable tbody');
+    tbody.innerHTML = list.map(user => {
+      const isCurrentUser = false; // customize if you inject current user's id
+      return `
+        <tr>
+          <td>${user.username}</td>
+          <td>${user.email || ''}</td>
+          <td><span class="badge ${getRoleBadgeClass(user.role)}">${getRoleLabel(user.role)}</span></td>
+          <td>
+            <span class="badge ${user.is_active ? 'text-bg-success' : 'text-bg-danger'}">${user.is_active ? 'Active' : 'Inactive'}</span>
+            ${user.password_change_required ? '<span class="badge text-bg-warning ms-1">Change required</span>' : ''}
+          </td>
+          <td>${formatDate(user.last_login)}</td>
+          <td>
+            <button class="btn btn-sm btn-primary me-1" onclick="editUser(${user.id})">Edit</button>
+            <button class="btn btn-sm btn-warning me-1" onclick="showResetPasswordModal(${user.id}, '${user.username}')">Reset PW</button>
+            ${!isCurrentUser ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')">Delete</button>` : ''}
+          </td>
+        </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('Load users error:', e);
+    showAlert('Failed to load users', 'danger');
+  }
+}
+
+function openCreate() {
+  currentUserId = null;
+  document.getElementById('modalTitle').textContent = 'Create user';
+  document.getElementById('username').value = '';
+  document.getElementById('email').value = '';
+  document.getElementById('password').value = '';
+  document.getElementById('role').value = 'user';
+  document.getElementById('is_active').checked = true;
+  document.getElementById('password_change_required').checked = false;
+  document.getElementById('passwordHelp').style.display = 'none';
+  document.getElementById('username').disabled = false;
+  new bootstrap.Modal(document.getElementById('userModal')).show();
+}
+
+async function editUser(userId) {
+  try {
+    const res = await fetch('/admin/api/users/' + userId);
+    const user = await res.json();
+
+    currentUserId = userId;
+    document.getElementById('modalTitle').textContent = 'Edit user';
+    document.getElementById('username').value = user.username;
+    document.getElementById('email').value = user.email || '';
+    document.getElementById('password').value = '';
+    document.getElementById('role').value = user.role || 'user';
+    document.getElementById('is_active').checked = !!user.is_active;
+    document.getElementById('password_change_required').checked = !!user.password_change_required;
+    document.getElementById('passwordHelp').style.display = 'block';
+    document.getElementById('username').disabled = true;
+    new bootstrap.Modal(document.getElementById('userModal')).show();
+  } catch (e) {
+    console.error('Load user error:', e);
+    showAlert('Failed to load user', 'danger');
+  }
+}
+
+document.getElementById('userForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const formData = {
+    username: document.getElementById('username').value,
+    email: document.getElementById('email').value,
+    role: document.getElementById('role').value,
+    is_active: document.getElementById('is_active').checked,
+    password_change_required: document.getElementById('password_change_required').checked
+  };
+  const password = document.getElementById('password').value;
+  if (password) formData.password = password;
+
+  try {
+    let res;
+    if (currentUserId) {
+      res = await fetch('/admin/api/users/' + currentUserId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+    } else {
+      if (!password) { showAlert('Password is required to create a user', 'warning'); return; }
+      res = await fetch('/admin/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+    }
+    if (res.ok) {
+      showAlert(currentUserId ? 'User updated' : 'User created', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+      loadUsers();
+    } else {
+      const err = await res.json();
+      showAlert('Error: ' + (err.error || res.status), 'danger');
+    }
+  } catch (e) {
+    console.error('Save error:', e);
+    showAlert('Failed to save user', 'danger');
+  }
+});
+
+async function deleteUser(userId, username) {
+  if (!confirm(`Delete user "${username}" ?`)) return;
+  try {
+    const res = await fetch('/admin/api/users/' + userId, { method: 'DELETE' });
+    if (res.ok) { showAlert('User deleted', 'success'); loadUsers(); }
+    else { const err = await res.json(); showAlert('Error: ' + (err.error || res.status), 'danger'); }
+  } catch (e) {
+    console.error('Delete error:', e);
+    showAlert('Failed to delete user', 'danger');
+  }
+}
+
+let resetUserId = null;
+function showResetPasswordModal(userId, username) {
+  resetUserId = userId;
+  document.getElementById('resetUser').textContent = `Reset password for "${username}"`;
+  document.getElementById('resetPassword').value = '';
+  document.getElementById('resetRequire').checked = true;
+  new bootstrap.Modal(document.getElementById('resetModal')).show();
+}
+
+document.getElementById('resetForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const pw = document.getElementById('resetPassword').value;
+  if (!pw) { showAlert('New password required', 'warning'); return; }
+  try {
+    const res = await fetch('/admin/api/users/' + resetUserId + '/reset-password', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        password: pw,
+        password_change_required: document.getElementById('resetRequire').checked
+      })
+    });
+    if (res.ok) {
+      showAlert('Password reset', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('resetModal')).hide();
+    } else {
+      const err = await res.json();
+      showAlert('Error: ' + (err.error || res.status), 'danger');
+    }
+  } catch (e) {
+    console.error('Reset error:', e);
+    showAlert('Failed to reset password', 'danger');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', loadUsers);
+</script>
+</body>
+</html>

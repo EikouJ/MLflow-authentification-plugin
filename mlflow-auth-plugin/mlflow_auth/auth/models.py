@@ -21,6 +21,7 @@ class User(Base, UserMixin):
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     last_login = Column(DateTime)
     api_key = Column(String(255), unique=True)
+    password_change_required = Column(Boolean, default=False)
     
     # Relations
     login_history = relationship("LoginHistory", back_populates="user", cascade="all, delete-orphan")

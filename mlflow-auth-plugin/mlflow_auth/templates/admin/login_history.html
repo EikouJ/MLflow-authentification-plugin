@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Historique des connexions - MLflow{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-clock-history"></i> Historique des connexions</h2>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover" id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        <th>Adresse IP</th>
+                        <th>Connexion</th>
+                        <th>Déconnexion</th>
+                        <th>Durée</th>
+                        <th>Navigateur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- History will be loaded via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div id="paginationInfo"></div>
+            <nav>
+                <ul class="pagination" id="pagination"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const limit = 20;
+    let currentPage = 1;
+    let totalRecords = 0;
+    
+    // Load history on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadHistory();
+    });
+    
+    // Load history from API
+    async function loadHistory(page = 1) {
+        try {
+            const offset = (page - 1) * limit;
+            const response = await fetch(`/admin/api/login-history?limit=${limit}&offset=${offset}`);
+            const data = await response.json();
+            
+            totalRecords = data.total;
+            currentPage = page;
+            
+            const tbody = document.querySelector('#historyTable tbody');
+            tbody.innerHTML = data.records.map(record => `
+                <tr>
+                    <td>${record.username}</td>
+                    <td>${record.ip_address}</td>
+                    <td>${formatDate(record.login_time)}</td>
+                    <td>${record.logout_time ? formatDate(record.logout_time) : '<span class="badge bg-success">En cours</span>'}</td>
+                    <td>${record.session_duration ? formatDuration(record.session_duration) : '-'}</td>
+                    <td title="${record.user_agent}">${truncateUserAgent(record.user_agent)}</td>
+                </tr>
+            `).join('');
+            
+            updatePagination();
+        } catch (error) {
+            console.error('Erreur chargement historique:', error);
+            showAlert('Erreur lors du chargement de l\'historique', 'danger');
+        }
+    }
+    
+    // Update pagination controls
+    function updatePagination() {
+        const totalPages = Math.ceil(totalRecords / limit);
+        const pagination = document.getElementById('pagination');
+        const paginationInfo = document.getElementById('paginationInfo');
+        
+        paginationInfo.textContent = `Affichage de ${((currentPage - 1) * limit) + 1} à ${Math.min(currentPage * limit, totalRecords)} sur ${totalRecords} entrées`;
+        
+        pagination.innerHTML = '';
+        
+        // Previous button
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${currentPage - 1})">Précédent</a>`;
+        pagination.appendChild(prevLi);
+        
+        // Page numbers
+        const startPage = Math.max(1, currentPage - 2);
+        const endPage = Math.min(totalPages, startPage + 4);
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const pageLi = document.createElement('li');
+            pageLi.className = `page-item ${i === currentPage ? 'active' : ''}`;
+            pageLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${i})">${i}</a>`;
+            pagination.appendChild(pageLi);
+        }
+        
+        // Next button
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<a class="page-link" href="#" onclick="loadHistory(${currentPage + 1})">Suivant</a>`;
+        pagination.appendChild(nextLi);
+    }
+    
+    // Utility functions
+    function formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('fr-FR');
+    }
+    
+    function formatDuration(seconds) {
+        if (!seconds) return '-';
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        } else {
+            return `${secs}s`;
+        }
+    }
+    
+    function truncateUserAgent(userAgent) {
+        if (!userAgent) return 'Inconnu';
+        if (userAgent.includes('Chrome')) return 'Chrome';
+        if (userAgent.includes('Firefox')) return 'Firefox';
+        if (userAgent.includes('Safari')) return 'Safari';
+        if (userAgent.includes('Edge')) return 'Edge';
+        return 'Autre';
+    }
+    
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.querySelector('.container.mt-4').prepend(alertDiv);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}

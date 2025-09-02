@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Historique des connexions</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* Simple, clean dashboard styling (no external CSS framework) */
+    :root {
+      --bg: #0f172a;
+      --card: #ffffff;
+      --muted: #64748b;
+      --text: #0f172a;
+      --primary: #2563eb;
+      --primary-600: #1d4ed8;
+      --ring: #c7d2fe;
+      --ok: #16a34a;
+      --fail: #dc2626;
+      --border: #e2e8f0;
+      --chip: #f1f5f9;
+    }
+    html, body {
+      margin: 0; padding: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      padding: 18px 20px;
+      background: #111827;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    header a {
+      color: #c7d2fe;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    header a:hover { text-decoration: underline; }
+    header h1 {
+      font-size: 18px;
+      margin: 0 16px 0 0;
+      line-height: 1;
+    }
+    .container {
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.15);
+      padding: 16px;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    @media (min-width: 720px) {
+      .toolbar {
+        grid-template-columns: 1fr auto auto auto;
+        align-items: end;
+      }
+    }
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    input[type="text"], input[type="date"], select {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      outline: none;
+    }
+    input[type="text"]:focus, input[type="date"]:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--ring);
+    }
+    .btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn:hover { background: var(--primary-600); }
+    .btn.secondary {
+      background: #e5e7eb;
+      color: #111827;
+      font-weight: 600;
+    }
+    .btn.secondary:hover { background: #d1d5db; }
+    .table-wrap {
+      width: 100%;
+      overflow: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    thead th {
+      text-align: left;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .02em;
+      font-weight: 700;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      white-space: nowrap;
+    }
+    tbody td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    tbody tr:hover {
+      background: #f9fafb;
+    }
+    .chip {
+      display: inline-block;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 999px;
+      background: var(--chip);
+      color: #0f172a;
+      border: 1px solid var(--border);
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .fail { color: var(--fail); font-weight: 700; }
+    .muted { color: var(--muted); }
+    .pagination {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      padding-top: 12px;
+    }
+    .spacer { flex: 1; }
+    .empty {
+      text-align: center;
+      padding: 28px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>🗂️ Historique des connexions</h1>
+      <a href="/admin">← Retour au dashboard</a>
+      <span class="spacer"></span>
+      <a href="/">Aller à MLflow</a>
+      <a href="/logout">Se déconnecter</a>
+    </header>
+
+    <main class="container">
+      <div class="card">
+        <!-- Filters / actions -->
+        <div class="toolbar">
+          <div class="field">
+            <label for="searchUser">Recherche (username ou ID utilisateur)</label>
+            <input id="searchUser" type="text" placeholder="ex: alice ou 12" />
+          </div>
+          <div class="field">
+            <label for="sinceDate">Depuis (date)</label>
+            <input id="sinceDate" type="date" />
+          </div>
+          <div class="field">
+            <label for="pageSize">Taille de page</label>
+            <select id="pageSize">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div class="field" style="grid-auto-flow: column; display: grid; grid-auto-columns: max-content; gap: 8px;">
+            <button class="btn" id="applyBtn">Appliquer</button>
+            <button class="btn secondary" id="resetBtn">Réinitialiser</button>
+            <button class="btn secondary" id="exportBtn">Exporter CSV</button>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap">
+          <table id="histTable" aria-describedby="history table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>IP</th>
+                <th>Login time</th>
+                <th>Logout time</th>
+                <th>Success</th>
+              </tr>
+            </thead>
+            <tbody id="histBody">
+              <tr><td colspan="8" class="empty">Chargement…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <div id="pageInfo" class="muted"></div>
+          <div class="spacer"></div>
+          <button class="btn secondary" id="prevBtn">Précédent</button>
+          <button class="btn secondary" id="nextBtn">Suivant</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ------- Config -------
+    const API_URL = '/admin/api/login-history';
+    const DEFAULT_PAGE = 1;
+
+    // ------- State -------
+    const state = {
+      page: DEFAULT_PAGE,
+      size: 25,
+      total: 0,
+      items: [],
+      lastQuery: { user: '', since: '' },
+    };
+
+    // ------- Helpers -------
+    function fmtDate(iso) {
+      // Format ISO string into a readable local datetime; keep ISO if parsing fails
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString();
+      } catch {
+        return iso;
+      }
+    }
+
+    function escapeCsv(v) {
+      // Basic CSV escaping
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    }
+
+    function makeCsv(rows) {
+      const header = ['id','user_id','username','email','ip','login_time','logout_time','success'];
+      const lines = [header.join(',')];
+      for (const r of rows) {
+        lines.push([
+          escapeCsv(r.id),
+          escapeCsv(r.user_id),
+          escapeCsv(r.username),
+          escapeCsv(r.email),
+          escapeCsv(r.ip),
+          escapeCsv(r.login_time),
+          escapeCsv(r.logout_time),
+          escapeCsv(r.success),
+        ].join(','));
+      }
+      return lines.join('\n');
+    }
+
+    function download(filename, text) {
+      const a = document.createElement('a');
+      a.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(text));
+      a.setAttribute('download', filename);
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // ------- Rendering -------
+    function renderTable(items) {
+      const tbody = document.getElementById('histBody');
+      if (!items || items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty">Aucun enregistrement</td></tr>`;
+        return;
+      }
+      const html = items.map((row) => {
+        const ok = (row.success === true || row.success === 1 || row.success === '1');
+        return `
+          <tr>
+            <td>${row.id ?? ''}</td>
+            <td><span class="chip">${row.user_id ?? ''}</span></td>
+            <td>${row.username ?? ''}</td>
+            <td>${row.email ?? ''}</td>
+            <td>${row.ip ?? ''}</td>
+            <td><span class="muted">${fmtDate(row.login_time)}</span></td>
+            <td><span class="muted">${fmtDate(row.logout_time)}</span></td>
+            <td>${ok ? '<span class="ok">✔</span>' : '<span class="fail">✖</span>'}</td>
+          </tr>
+        `;
+      }).join('');
+      tbody.innerHTML = html;
+    }
+
+    function renderPagination() {
+      const pageInfo = document.getElementById('pageInfo');
+      const lastPage = Math.max(1, Math.ceil(state.total / state.size));
+      pageInfo.textContent = `Page ${state.page} / ${lastPage} — ${state.total} enregistrements`;
+      document.getElementById('prevBtn').disabled = (state.page <= 1);
+      document.getElementById('nextBtn').disabled = (state.page >= lastPage);
+    }
+
+    // ------- Data fetch -------
+    async function fetchHistory({ page, size, user, since }) {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('size', String(size));
+      if (user) params.set('user', user);
+      if (since) params.set('since', since);
+
+      const url = `${API_URL}?${params.toString()}`;
+      const res = await fetch(url, { method: 'GET', credentials: 'same-origin' });
+      if (!res.ok) {
+        // Basic error handling; in production you might want more robust UI
+        const txt = await res.text();
+        throw new Error(`API error ${res.status}: ${txt}`);
+      }
+      return res.json();
+    }
+
+    async function load(page = state.page) {
+      // Read current UI filters
+      const user = (document.getElementById('searchUser').value || '').trim();
+      const since = document.getElementById('sinceDate').value || '';
+      const size = Number(document.getElementById('pageSize').value || 25);
+
+      // Save the intended query
+      state.page = page;
+      state.size = size;
+      state.lastQuery = { user, since };
+
+      // Fetch & render
+      const tBody = document.getElementById('histBody');
+      tBody.innerHTML = `<tr><td colspan="8" class="empty">Chargement…</td></tr>`;
+      try {
+        const data = await fetchHistory({ page, size, user, since });
+        state.items = data.items || [];
+        state.total = data.total || 0;
+        renderTable(state.items);
+        renderPagination();
+      } catch (err) {
+        console.error(err);
+        tBody.innerHTML = `<tr><td colspan="8" class="empty">Erreur: ${(err && err.message) || 'inconnue'}</td></tr>`;
+        document.getElementById('pageInfo').textContent = '';
+      }
+    }
+
+    // ------- Events -------
+    document.getElementById('applyBtn').addEventListener('click', () => load(1));
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      document.getElementById('searchUser').value = '';
+      document.getElementById('sinceDate').value = '';
+      document.getElementById('pageSize').value = '25';
+      load(1);
+    });
+    document.getElementById('prevBtn').addEventListener('click', () => {
+      if (state.page > 1) load(state.page - 1);
+    });
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      const lastPage = Math.max(1, Math.ceil(state.total / state.size));
+      if (state.page < lastPage) load(state.page + 1);
+    });
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const csv = makeCsv(state.items || []);
+      const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+      download(`login_history_page${state.page}_${stamp}.csv`, csv);
+    });
+
+    // Load initial page
+    window.addEventListener('DOMContentLoaded', () => load(1));
+  </script>
+</body>
+</html>

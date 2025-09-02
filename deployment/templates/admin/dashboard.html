@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Admin Dashboard - MLflow</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap CDN for quick styling -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/admin">MLflow Admin</a>
+    <div class="d-flex">
+      <a class="btn btn-outline-light me-2" href="/admin/users">Users</a>
+      <a class="btn btn-outline-light me-2" href="/admin/login_history">History</a>
+      <!-- 🚀 New MLflow Web UI button -->
+      <a class="btn btn-success me-2" href="/" target="_blank">Open MLflow</a>
+      <a class="btn btn-warning" href="/logout">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <h1 class="mb-3">Dashboard</h1>
+  <p class="text-muted mb-4">High-level metrics for your instance.</p>
+
+  <div class="row g-3">
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted">Total users</h6>
+          <div class="display-6" id="totalUsers">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted">Active users</h6>
+          <div class="display-6" id="activeUsers">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted">Admins</h6>
+          <div class="display-6" id="adminUsers">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted">Logins (24h)</h6>
+          <div class="display-6" id="recentLogins">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="my-4">
+
+  <h3 class="mb-3">Recent logins</h3>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>User</th><th>IP</th><th>Login</th><th>Logout</th><th>Duration</th><th>User Agent</th>
+        </tr>
+      </thead>
+      <tbody id="historyTableBody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
+function calculateDuration(a, b) {
+  const s = Math.floor((new Date(b) - new Date(a)) / 1000);
+  if (s < 0) return '-';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return `${h}h ${m}m ${sec}s`;
+}
+
+async function updateStats() {
+  try {
+    const res = await fetch('/admin/api/stats');
+    const s = await res.json();
+    document.getElementById('totalUsers').textContent   = s.total_users ?? 0;
+    document.getElementById('activeUsers').textContent  = s.active_users ?? 0;
+    document.getElementById('adminUsers').textContent   = s.admin_users ?? 0;
+    document.getElementById('recentLogins').textContent = s.recent_logins ?? 0;
+  } catch (e) { console.error(e); }
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch('/admin/api/login-history?page=1&size=10');
+    const data = await res.json();
+    const tb = document.getElementById('historyTableBody');
+    tb.innerHTML = (data.items || []).map(r => `
+      <tr>
+        <td>${r.username ?? r.user_id}</td>
+        <td>${r.ip || ''}</td>
+        <td>${formatDate(r.login_time)}</td>
+        <td>${r.logout_time ? formatDate(r.logout_time) : '<span class="badge text-bg-success">Active</span>'}</td>
+        <td>${r.logout_time ? calculateDuration(r.login_time, r.logout_time) : '-'}</td>
+        <td title="${r.user_agent || ''}">${(r.user_agent || '').slice(0, 36)}</td>
+      </tr>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateStats();
+  loadHistory();
+});
+</script>
+</body>
+</html>
